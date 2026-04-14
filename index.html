@@ -2,154 +2,174 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <title>🎤 龍月花・雲龍蓮と話そう！</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agora Voice Test</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      padding: 20px;
+      font-family: system-ui, sans-serif;
       max-width: 500px;
-      margin: 0 auto;
+      margin: 50px auto;
+      padding: 20px;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h2 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
     }
     input, button {
-      font-size: 16px;
-      padding: 12px;
-      margin: 5px;
+      font-size: 18px;
+      padding: 12px 20px;
+      margin: 8px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
     }
     input {
-      width: calc(100% - 120px);
+      width: 200px;
     }
     button {
-      width: 100px;
+      background: #667eea;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: scale(1.05);
+      background: #5a67d8;
+    }
+    button:active {
+      transform: scale(0.95);
     }
     .status {
       margin-top: 20px;
-      padding: 10px;
-      background: #f0f0f0;
-      border-radius: 8px;
+      padding: 15px;
+      background: #f7f7f7;
+      border-radius: 10px;
+      font-weight: bold;
+    }
+    .connected {
+      background: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
     }
   </style>
 </head>
 <body>
-  <h2>🎤 Agora 音声通話テスト</h2>
+  <div class="container">
+    <h2>🎤 龍月花・雲龍蓮と話そう！</h2>
+    <p class="subtitle">同じルーム名を入れた人と話せるよ</p>
 
-  <div>
-    <input id="channel" placeholder="ルーム名" value="test-room" />
-    <button onclick="join()">参加</button>
-    <button onclick="leave()">退出</button>
+    <input id="channel" placeholder="ルーム名" value="Ryugekka">
+    <button onclick="join()">🎙️ 参加</button>
+    <button onclick="leave()">🚪 退出</button>
+
+    <div class="status" id="status">💤 未接続</div>
   </div>
-
-  <div class="status" id="status">未接続</div>
 
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.22.0.js"></script>
   <script>
-    // 画像にあった正しいApp IDを使ってください
-    const APP_ID = "8a10ad2855b44c9aa6cbed991ea48d86";  // ← 修正済み
+    const APP_ID = "8a10ad2855b44c9aa6cbcd991ea48d86";
+    
+    // ★★★ あなたのトークン（24時間有効）★★★
+    const TOKEN = "007eJxTYHDm3xpo/IN7teAvkb0X7FZEr//lY7q/JtXy/329j8v45N8oMFgkGhokphhZmJommZgkWyYmmiUnpaZYWhqmJppYpFiYxTrdy2wIZGQ4vqWLiZEBAkF8DoagytL01OzsRAYGAPjZIiw=";
     
     let client = null;
-    let localTracks = {
-      audio: null
-    };
+    let localAudioTrack = null;
     let remoteUsers = {};
 
     async function join() {
       try {
-        const channel = document.getElementById("channel").value;
-        if (!channel) {
-          alert("ルーム名を入力してください");
+        const channelName = document.getElementById("channel").value;
+        if (!channelName) {
+          alert("ルーム名を入れてね！");
           return;
         }
 
-        updateStatus("参加中...");
+        const statusDiv = document.getElementById("status");
+        statusDiv.innerText = "🎙️ 参加中...";
+        statusDiv.className = "status";
 
-        // クライアント作成
         client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-
-        // イベント設定（joinの前に設定推奨）
-        client.on("user-published", handleUserPublished);
-        client.on("user-unpublished", handleUserUnpublished);
-        client.on("user-joined", (user) => {
-          console.log("ユーザー参加:", user.uid);
-          updateStatus(`ユーザー ${user.uid} が参加しました`);
+        
+        // 他の人が話し始めたら聞こえるようにする
+        client.on("user-published", async (user, mediaType) => {
+          await client.subscribe(user, mediaType);
+          if (mediaType === "audio") {
+            remoteUsers[user.uid] = user;
+            user.audioTrack.play();
+            const count = Object.keys(remoteUsers).length;
+            statusDiv.innerText = `✅ 通話中（${count} 人と接続）`;
+            statusDiv.className = "status connected";
+          }
         });
-        client.on("user-left", (user) => {
-          console.log("ユーザー退出:", user.uid);
-          updateStatus(`ユーザー ${user.uid} が退出しました`);
+
+        client.on("user-unpublished", (user) => {
           delete remoteUsers[user.uid];
+          const count = Object.keys(remoteUsers).length;
+          statusDiv.innerText = `✅ 通話中（${count} 人と接続）`;
         });
 
-        // トークン不要の場合はnull（App IDのみでテスト可、ただし30日間または100人制限あり）
-        await client.join(APP_ID, channel, null, null);
+        client.on("user-left", (user) => {
+          delete remoteUsers[user.uid];
+          const count = Object.keys(remoteUsers).length;
+          statusDiv.innerText = `✅ 通話中（${count} 人と接続）`;
+        });
+
+        // トークンを使って接続！
+        await client.join(APP_ID, channelName, TOKEN, null);
         
-        // マイク作成
-        localTracks.audio = await AgoraRTC.createMicrophoneAudioTrack();
+        // マイクをON
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        await client.publish([localAudioTrack]);
         
-        // 公開
-        await client.publish([localTracks.audio]);
+        statusDiv.innerText = `✅ 通話中（ルーム: ${channelName}）`;
+        statusDiv.className = "status connected";
         
-        updateStatus(`✅ 接続中: ${channel} (マイクON)`);
-        console.log("参加成功");
+        console.log("参加成功！");
         
       } catch (err) {
         console.error(err);
-        updateStatus(`❌ エラー: ${err.message}`);
-      }
-    }
-
-    async function handleUserPublished(user, mediaType) {
-      await client.subscribe(user, mediaType);
-      console.log("購読成功:", user.uid, mediaType);
-      
-      if (mediaType === "audio") {
-        remoteUsers[user.uid] = user;
-        user.audioTrack.play();
-        updateStatus(`${user.uid} の音声を受信中`);
-      }
-    }
-
-    function handleUserUnpublished(user) {
-      console.log("非公開:", user.uid);
-      if (remoteUsers[user.uid]) {
-        delete remoteUsers[user.uid];
+        const statusDiv = document.getElementById("status");
+        statusDiv.innerText = `❌ エラー: ${err.message}`;
+        statusDiv.className = "status error";
       }
     }
 
     async function leave() {
-      try {
-        // ローカルトラックを閉じる
-        if (localTracks.audio) {
-          localTracks.audio.close();
-          localTracks.audio = null;
-        }
-        
-        // クライアント退出
-        if (client) {
-          await client.leave();
-          client = null;
-        }
-        
-        updateStatus("未接続");
-        console.log("退出完了");
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    function updateStatus(msg) {
-      document.getElementById("status").innerHTML = msg;
-    }
-
-    // ページ終了時に退出
-    window.addEventListener("beforeunload", () => {
-      if (localTracks.audio) {
-        localTracks.audio.close();
+      if (localAudioTrack) {
+        localAudioTrack.close();
+        localAudioTrack = null;
       }
       if (client) {
-        client.leave();
+        await client.leave();
+        client = null;
       }
+      remoteUsers = {};
+      const statusDiv = document.getElementById("status");
+      statusDiv.innerText = "💤 未接続";
+      statusDiv.className = "status";
+      console.log("退出しました");
+    }
+
+    // ページを閉じるときに退出
+    window.addEventListener("beforeunload", () => {
+      if (localAudioTrack) localAudioTrack.close();
+      if (client) client.leave();
     });
   </script>
 </body>
