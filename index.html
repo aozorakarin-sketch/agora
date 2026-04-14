@@ -2,50 +2,155 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agora Voice Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 20px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 12px;
+      margin: 5px;
+    }
+    input {
+      width: calc(100% - 120px);
+    }
+    button {
+      width: 100px;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 8px;
+    }
+  </style>
 </head>
 <body>
-  <h2>通話テスト</h2>
+  <h2>🎤 Agora 音声通話テスト</h2>
 
-  <input id="channel" placeholder="ルーム名（同じにすると繋がる）" />
-  <button onclick="join()">参加</button>
-  <button onclick="leave()">退出</button>
+  <div>
+    <input id="channel" placeholder="ルーム名" value="test-room" />
+    <button onclick="join()">参加</button>
+    <button onclick="leave()">退出</button>
+  </div>
 
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+  <div class="status" id="status">未接続</div>
+
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.22.0.js"></script>
   <script>
-    const APP_ID = "8a10ad2855b44c9aa6cbed991ea48d86"; // ←さっきのやつ
-    let client;
-    let localTrack;
+    // 画像にあった正しいApp IDを使ってください
+    const APP_ID = "8a10ad2855b44c9aa6cbed991ea48d86";  // ← 修正済み
+    
+    let client = null;
+    let localTracks = {
+      audio: null
+    };
+    let remoteUsers = {};
 
     async function join() {
-      const channel = document.getElementById("channel").value;
-
-      client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-
-      await client.join(APP_ID, channel, null, null);
-
-      localTrack = await AgoraRTC.createMicrophoneAudioTrack();
-      await client.publish([localTrack]);
-
-      client.on("user-published", async (user, mediaType) => {
-        await client.subscribe(user, mediaType);
-        if (mediaType === "audio") {
-          user.audioTrack.play();
+      try {
+        const channel = document.getElementById("channel").value;
+        if (!channel) {
+          alert("ルーム名を入力してください");
+          return;
         }
-      });
 
-      console.log("参加成功");
+        updateStatus("参加中...");
+
+        // クライアント作成
+        client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+        // イベント設定（joinの前に設定推奨）
+        client.on("user-published", handleUserPublished);
+        client.on("user-unpublished", handleUserUnpublished);
+        client.on("user-joined", (user) => {
+          console.log("ユーザー参加:", user.uid);
+          updateStatus(`ユーザー ${user.uid} が参加しました`);
+        });
+        client.on("user-left", (user) => {
+          console.log("ユーザー退出:", user.uid);
+          updateStatus(`ユーザー ${user.uid} が退出しました`);
+          delete remoteUsers[user.uid];
+        });
+
+        // トークン不要の場合はnull（App IDのみでテスト可、ただし30日間または100人制限あり）
+        await client.join(APP_ID, channel, null, null);
+        
+        // マイク作成
+        localTracks.audio = await AgoraRTC.createMicrophoneAudioTrack();
+        
+        // 公開
+        await client.publish([localTracks.audio]);
+        
+        updateStatus(`✅ 接続中: ${channel} (マイクON)`);
+        console.log("参加成功");
+        
+      } catch (err) {
+        console.error(err);
+        updateStatus(`❌ エラー: ${err.message}`);
+      }
+    }
+
+    async function handleUserPublished(user, mediaType) {
+      await client.subscribe(user, mediaType);
+      console.log("購読成功:", user.uid, mediaType);
+      
+      if (mediaType === "audio") {
+        remoteUsers[user.uid] = user;
+        user.audioTrack.play();
+        updateStatus(`${user.uid} の音声を受信中`);
+      }
+    }
+
+    function handleUserUnpublished(user) {
+      console.log("非公開:", user.uid);
+      if (remoteUsers[user.uid]) {
+        delete remoteUsers[user.uid];
+      }
     }
 
     async function leave() {
-      if (localTrack) {
-        localTrack.close();
+      try {
+        // ローカルトラックを閉じる
+        if (localTracks.audio) {
+          localTracks.audio.close();
+          localTracks.audio = null;
+        }
+        
+        // クライアント退出
+        if (client) {
+          await client.leave();
+          client = null;
+        }
+        
+        updateStatus("未接続");
+        console.log("退出完了");
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function updateStatus(msg) {
+      document.getElementById("status").innerHTML = msg;
+    }
+
+    // ページ終了時に退出
+    window.addEventListener("beforeunload", () => {
+      if (localTracks.audio) {
+        localTracks.audio.close();
       }
       if (client) {
-        await client.leave();
+        client.leave();
       }
-      console.log("退出");
-    }
+    });
   </script>
 </body>
 </html>
