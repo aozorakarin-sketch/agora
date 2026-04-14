@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Agora Voice Test</title>
+</head>
+<body>
+  <h2>通話テスト</h2>
+
+  <input id="channel" placeholder="ルーム名（同じにすると繋がる）" />
+  <button onclick="join()">参加</button>
+  <button onclick="leave()">退出</button>
+
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+  <script>
+    const APP_ID = "8a10ad2855b44c9aa6cbed991ea48d86"; // ←さっきのやつ
+    let client;
+    let localTrack;
+
+    async function join() {
+      const channel = document.getElementById("channel").value;
+
+      client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+      await client.join(APP_ID, channel, null, null);
+
+      localTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      await client.publish([localTrack]);
+
+      client.on("user-published", async (user, mediaType) => {
+        await client.subscribe(user, mediaType);
+        if (mediaType === "audio") {
+          user.audioTrack.play();
+        }
+      });
+
+      console.log("参加成功");
+    }
+
+    async function leave() {
+      if (localTrack) {
+        localTrack.close();
+      }
+      if (client) {
+        await client.leave();
+      }
+      console.log("退出");
+    }
+  </script>
+</body>
+</html>
